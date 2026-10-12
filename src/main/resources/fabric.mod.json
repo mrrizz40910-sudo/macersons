@@ -1,0 +1,20 @@
+{
+	"schemaVersion": 1,
+	"id": "automace",
+	"version": "${version}",
+	"name": "Auto Mace",
+	"description": "Singleplayer auto mace: auto-switch, smash, stun slam, switch back. Right Shift opens the config GUI.",
+	"authors": ["You"],
+	"license": "CC0-1.0",
+	"icon": "assets/automace/icon.png",
+	"environment": "client",
+	"entrypoints": {
+		"client": ["com.example.automace.AutoMaceMod"]
+	},
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~1.21.11",
+		"java": ">=21",
+		"fabric-api": "*"
+	}
+}
