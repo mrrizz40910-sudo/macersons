@@ -1,35 +1,44 @@
 package com.example.automace;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.KeyEvent;
 import net.minecraft.network.chat.Component;
+import org.lwjgl.glfw.GLFW;
 
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-/** Dark sidebar + card style settings screen. */
 public class AutoMaceScreen extends Screen {
-    private static final int PANEL = 0xFF1B1E26, SIDEBAR = 0xFF15181F, BORDER = 0xFF2A2E39;
-    private static final int CARD = 0xFF272B35, CARD_HOVER = 0xFF2F3440;
-    private static final int ACCENT = 0xFF2EE59D, ACCENT_BG = 0xFF1D3A33;
-    private static final int TEXT = 0xFFE8EAF0, SUB = 0xFF8A90A0, OFF = 0xFF3A3F4C, WHITE = 0xFFFFFFFF;
-    private static final int W = 400, H = 240, SIDE = 104;
 
-    private enum Tab {
-        COMBAT("Combat"), TARGETS("Targets"), TIMING("Timing");
-        final String label;
+    private static final int COL_PANEL = 0xF0101216;
+    private static final int COL_SIDEBAR = 0xFF16181E;
+    private static final int COL_CARD = 0xFF1D2026;
+    private static final int COL_CARD_HOVER = 0xFF262B36;
+    private static final int COL_TEXT = 0xFFE8ECF1;
+    private static final int COL_TEXT_DIM = 0xFF8A929C;
+    private static final int COL_GREEN = 0xFF4ADE80;
+    private static final int COL_GREEN_DARK = 0xFF1F4D33;
+    private static final int COL_SPLIT = 0xFF2A2E38;
 
-        Tab(String label) {
-            this.label = label;
-        }
-    }
+    private static final String[] TABS = {"Combat", "Targets", "Timing", "Interface"};
 
-    private static Tab tab = Tab.COMBAT;
-    private int left, top;
+    private int tab = 0;
+    private EditBox ignoreBox;
+    private String lastIgnoreText = "";
+
+    private int panelX;
+    private int panelY;
+    private int panelW;
+    private int panelH;
+    private int sideW;
+    private int contentX;
+    private int rowW;
 
     public AutoMaceScreen() {
         super(Component.literal("Auto Mace"));
@@ -37,200 +46,374 @@ public class AutoMaceScreen extends Screen {
 
     @Override
     protected void init() {
-        left = (this.width - W) / 2;
-        top = (this.height - H) / 2;
-        build();
-    }
+        panelW = Math.min(this.width - 24, 364);
+        panelH = Math.min(this.height - 24, 224);
+        panelX = (this.width - panelW) / 2;
+        panelY = (this.height - panelH) / 2;
+        sideW = 84;
+        contentX = panelX + sideW + 10;
+        rowW = panelW - sideW - 24;
+        int rowY = panelY + 38;
 
-    private void build() {
-        int tx = left + 12, ty = top + 62;
-        for (Tab t : Tab.values()) {
-            this.addRenderableWidget(new TabButton(tx, ty, SIDE - 24, 22, t));
-            ty += 26;
+        for (int i = 0; i < TABS.length; i++) {
+            final int index = i;
+            this.addRenderableWidget(new OrchardButton(
+                    panelX + 8, panelY + 34 + i * 26, sideW - 16, 20, TABS[i],
+                    b -> {
+                        this.tab = index;
+                        this.rebuild();
+                    },
+                    i == this.tab));
         }
-        this.addRenderableWidget(new FlatButton(left + 12, top + H - 60, SIDE - 24, 22, "Reset", SUB, () -> {
-            resetDefaults();
-            this.clearWidgets();
-            this.build();
-        }));
-        this.addRenderableWidget(new FlatButton(left + 12, top + H - 34, SIDE - 24, 22, "Close", 0xFFFF6B6B, this::onClose));
 
-        int x = left + SIDE + 12, y = top + 46, w = W - SIDE - 24, step = 32;
-        switch (tab) {
-            case COMBAT -> {
-                toggle(x, y, w, "Enabled", "Master switch", () -> AutoMaceConfig.enabled, v -> AutoMaceConfig.enabled = v);
-                toggle(x, y + step, w, "Smash only", "Only hit when falling (real mace smash)", () -> AutoMaceConfig.smashOnly, v -> AutoMaceConfig.smashOnly = v);
-                toggle(x, y + step * 2, w, "Stun slam", "Axe a raised shield, then mace next tick", () -> AutoMaceConfig.stunSlam, v -> AutoMaceConfig.stunSlam = v);
-                cycle(x, y + step * 3, w, "Min fall height", "Vanilla smash starts at 1.5 blocks",
-                        () -> AutoMaceConfig.minFall + " blocks",
-                        () -> AutoMaceConfig.minFall = next(new double[]{1.5, 2.5, 3.5, 5.0, 8.0}, AutoMaceConfig.minFall));
+        this.addRenderableWidget(new OrchardButton(
+                contentX, panelY + panelH - 26, 60, 18, "Reset",
+                b -> {
+                    AutoMaceConfig.resetDefaults();
+                    AutoMaceConfig.save();
+                    this.rebuild();
+                },
+                false));
+        this.addRenderableWidget(new OrchardButton(
+                panelX + panelW - 70, panelY + panelH - 26, 60, 18, "Close",
+                b -> this.onClose(),
+                false));
+
+        int rowH = 24;
+        switch (this.tab) {
+            case 0 -> { // Combat
+                addSwitch(contentX, rowY + 0 * rowH, rowW, "Assist on click",
+                        "Only act when you press attack",
+                        () -> AutoMaceConfig.assistOnClick, v -> AutoMaceConfig.assistOnClick = v);
+                addSwitch(contentX, rowY + 1 * rowH, rowW, "Smash only",
+                        "Fire only on real mace smashes",
+                        () -> AutoMaceConfig.smashOnly, v -> AutoMaceConfig.smashOnly = v);
+                addSwitch(contentX, rowY + 2 * rowH, rowW, "Stun slam",
+                        "Axe first against shield blockers",
+                        () -> AutoMaceConfig.stunSlam, v -> AutoMaceConfig.stunSlam = v);
+                addSwitch(contentX, rowY + 3 * rowH, rowW, "Smart weapon pick",
+                        "Breach vs armored, Density on big falls",
+                        () -> AutoMaceConfig.smartWeaponPick, v -> AutoMaceConfig.smartWeaponPick = v);
+                addSwitch(contentX, rowY + 4 * rowH, rowW, "Spear reach targeting",
+                        "Trust vanilla spear range",
+                        () -> AutoMaceConfig.spearReach, v -> AutoMaceConfig.spearReach = v);
+                addSwitch(contentX, rowY + 5 * rowH, rowW, "Wind charge boost key",
+                        "Rebind in Controls",
+                        () -> AutoMaceConfig.windBoost, v -> AutoMaceConfig.windBoost = v);
             }
-            case TARGETS -> {
-                toggle(x, y, w, "Players / bots", "Other players and fake players", () -> AutoMaceConfig.targetPlayers, v -> AutoMaceConfig.targetPlayers = v);
-                toggle(x, y + step, w, "Hostile mobs", "Zombies, skeletons, creepers...", () -> AutoMaceConfig.targetHostile, v -> AutoMaceConfig.targetHostile = v);
-                toggle(x, y + step * 2, w, "Animals", "Sheep, cows, pigs... (never your pets)", () -> AutoMaceConfig.targetAnimals, v -> AutoMaceConfig.targetAnimals = v);
+            case 1 -> { // Targets
+                addSwitch(contentX, rowY + 0 * rowH, rowW, "Players & bots",
+                        "Not creative players",
+                        () -> AutoMaceConfig.targetPlayers, v -> AutoMaceConfig.targetPlayers = v);
+                addSwitch(contentX, rowY + 1 * rowH, rowW, "Hostile mobs",
+                        "Enemy mobs",
+                        () -> AutoMaceConfig.targetHostiles, v -> AutoMaceConfig.targetHostiles = v);
+                addSwitch(contentX, rowY + 2 * rowH, rowW, "Animals",
+                        "Never tamed pets",
+                        () -> AutoMaceConfig.targetAnimals, v -> AutoMaceConfig.targetAnimals = v);
+                buildIgnoreList(rowY + 3 * rowH + 6);
             }
-            case TIMING -> {
-                cycle(x, y, w, "Reaction delay", "Wait after your crosshair lands on a target",
-                        () -> AutoMaceConfig.reactionTicks + " ticks",
-                        () -> AutoMaceConfig.reactionTicks = (int) next(new double[]{0, 1, 2, 3, 4}, AutoMaceConfig.reactionTicks));
-                cycle(x, y + step, w, "Hit spacing", "Minimum time between auto attacks",
+            case 2 -> { // Timing
+                addNumberBar(contentX, rowY + 0 * rowH, rowW, "Min fall height",
+                        () -> String.format("%.1f blocks", AutoMaceConfig.minFall),
+                        v -> AutoMaceConfig.minFall = v, 0.5, 20.0, 0.5);
+                addNumberBar(contentX, rowY + 1 * rowH, rowW, "Reaction delay",
+                        () -> AutoMaceConfig.reactionDelay + " ticks",
+                        v -> AutoMaceConfig.reactionDelay = (int) AutoMaceConfig.clampDouble(v, 0, 20),
+                        0.0, 20.0, 1.0);
+                addNumberBar(contentX, rowY + 2 * rowH, rowW, "Hit spacing",
                         () -> AutoMaceConfig.hitSpacing + " ticks",
-                        () -> AutoMaceConfig.hitSpacing = (int) next(new double[]{4, 6, 8, 10, 15}, AutoMaceConfig.hitSpacing));
+                        v -> AutoMaceConfig.hitSpacing = (int) AutoMaceConfig.clampDouble(v, 1, 40),
+                        1.0, 40.0, 1.0);
+                addDescription(contentX, rowY + 3 * rowH, rowW,
+                        "Lower reaction delay = faster reaction");
+            }
+            default -> { // Interface
+                addSwitch(contentX, rowY + 0 * rowH, rowW, "HUD indicator",
+                        "Status text top-left",
+                        () -> AutoMaceConfig.hud, v -> AutoMaceConfig.hud = v);
+                addSwitch(contentX, rowY + 1 * rowH, rowW, "No-mace tip",
+                        "Action bar hint when no mace in hotbar",
+                        () -> AutoMaceConfig.noMaceTip, v -> AutoMaceConfig.noMaceTip = v);
+                addDescription(contentX, rowY + 3 * rowH, rowW,
+                        "Keys: Options > Controls > Auto Mace");
             }
         }
     }
 
-    private static void resetDefaults() {
-        AutoMaceConfig.enabled = true;
-        AutoMaceConfig.smashOnly = true;
-        AutoMaceConfig.stunSlam = true;
-        AutoMaceConfig.minFall = 1.5;
-        AutoMaceConfig.targetPlayers = true;
-        AutoMaceConfig.targetHostile = true;
-        AutoMaceConfig.targetAnimals = true;
-        AutoMaceConfig.reactionTicks = 0;
-        AutoMaceConfig.hitSpacing = 6;
-    }
+    // ------------------------------------------------------------ ignore list
 
-    private static double next(double[] values, double current) {
-        for (int i = 0; i < values.length; i++) {
-            if (Math.abs(values[i] - current) < 1e-6) return values[(i + 1) % values.length];
-        }
-        return values[0];
-    }
+    private void buildIgnoreList(int startY) {
+        int boxY = startY;
+        this.ignoreBox = new EditBox(Minecraft.getInstance().font, contentX, boxY, rowW - 64, 18,
+                Component.literal("Name"));
+        this.ignoreBox.setMaxLength(32);
+        this.ignoreBox.setValue(lastIgnoreText);
+        this.addRenderableWidget(this.ignoreBox);
+        this.addRenderableWidget(new OrchardButton(
+                contentX + rowW - 60, boxY, 60, 18, "Add",
+                b -> addIgnore(),
+                false));
 
-    private void toggle(int x, int y, int w, String label, String sub, BooleanSupplier get, Consumer<Boolean> set) {
-        this.addRenderableWidget(new SwitchRow(x, y, w, label, sub, get, set));
-    }
-
-    private void cycle(int x, int y, int w, String label, String sub, Supplier<String> value, Runnable step) {
-        this.addRenderableWidget(new CycleRow(x, y, w, label, sub, value, step));
-    }
-
-    @Override
-    public void render(GuiGraphics g, int mouseX, int mouseY, float delta) {
-        Font font = Minecraft.getInstance().font;
-
-        rrect(g, left - 1, top - 1, W + 2, H + 2, BORDER);
-        rrect(g, left, top, W, H, PANEL);
-        g.fill(left + 2, top + 2, left + SIDE, top + H - 2, SIDEBAR);
-
-        g.drawString(font, "Auto Mace", left + 14, top + 16, ACCENT);
-        g.drawString(font, AutoMaceConfig.enabled ? "ON" : "OFF", left + SIDE - 26, top + 16,
-                AutoMaceConfig.enabled ? ACCENT : 0xFFFF6B6B);
-        g.drawString(font, "singleplayer", left + 14, top + 28, SUB);
-        g.drawString(font, "MODULES", left + 14, top + 50, SUB);
-
-        g.drawString(font, tab.label, left + SIDE + 14, top + 16, TEXT);
-        g.drawString(font, "Changes save when you close this menu", left + SIDE + 14, top + 28, SUB);
-
-        super.render(g, mouseX, mouseY, delta);
-    }
-
-    @Override
-    public void onClose() {
-        AutoMaceConfig.save();
-        super.onClose();
-    }
-
-    /** Small rounded rectangle made from three overlapping fills. */
-    private static void rrect(GuiGraphics g, int x, int y, int w, int h, int color) {
-        g.fill(x + 2, y, x + w - 2, y + h, color);
-        g.fill(x, y + 2, x + w, y + h - 2, color);
-        g.fill(x + 1, y + 1, x + w - 1, y + h - 1, color);
-    }
-
-    private class TabButton extends Button {
-        private final Tab t;
-
-        TabButton(int x, int y, int w, int h, Tab t) {
-            super(x, y, w, h, Component.literal(t.label), b -> {
-                tab = t;
-                AutoMaceScreen.this.clearWidgets();
-                AutoMaceScreen.this.build();
-            }, Button.DEFAULT_NARRATION);
-            this.t = t;
-        }
-
-        @Override
-        protected void renderContents(GuiGraphics g, int mx, int my, float delta) {
-            Font font = Minecraft.getInstance().font;
-            boolean selected = tab == t;
-            if (selected) {
-                rrect(g, getX(), getY(), width, height, ACCENT_BG);
-                g.fill(getX(), getY() + 4, getX() + 2, getY() + height - 4, ACCENT);
-            } else if (isHovered()) {
-                rrect(g, getX(), getY(), width, height, CARD);
+        int entryY = boxY + 22;
+        int maxEntries = Math.min(AutoMaceConfig.ignoreList.size(), 5);
+        int shown = 0;
+        for (int i = 0; i < maxEntries; i++) {
+            if (entryY + 16 > panelY + panelH - 30) {
+                break;
             }
-            g.drawString(font, t.label, getX() + 10, getY() + (height - 8) / 2, selected ? ACCENT : TEXT);
+            final String name = AutoMaceConfig.ignoreList.get(i);
+            this.addRenderableWidget(new OrchardButton(
+                    contentX, entryY, rowW, 16, "[x] " + name,
+                    b -> {
+                        AutoMaceConfig.ignoreList.remove(name);
+                        AutoMaceConfig.save();
+                        this.rebuild();
+                    },
+                    false));
+            entryY += 18;
+            shown++;
+        }
+        int remaining = AutoMaceConfig.ignoreList.size() - shown;
+        if (remaining > 0 && entryY + 10 <= panelY + panelH - 30) {
+            addDescription(contentX, entryY, rowW, "...and " + remaining + " more (Reset clears all)");
         }
     }
 
-    private static class FlatButton extends Button {
+    private void addIgnore() {
+        String name = this.ignoreBox != null ? this.ignoreBox.getValue().trim() : "";
+        if (!name.isEmpty()) {
+            boolean exists = false;
+            for (String entry : AutoMaceConfig.ignoreList) {
+                if (entry.equalsIgnoreCase(name)) {
+                    exists = true;
+                    break;
+                }
+            }
+            if (!exists) {
+                AutoMaceConfig.ignoreList.add(name);
+                AutoMaceConfig.save();
+            }
+        }
+        lastIgnoreText = "";
+        this.rebuild();
+    }
+
+    // ------------------------------------------------------------ row builders
+
+    private void addSwitch(int x, int y, int w, String title, String subtitle,
+                           BooleanSupplier getter, Consumer<Boolean> setter) {
+        this.addRenderableWidget(new SwitchCard(x, y, w, title, subtitle, getter, setter));
+    }
+
+    private void addNumberBar(int x, int y, int w, String title,
+                              Supplier<String> value, Consumer<Double> adjust,
+                              double min, double max, double step) {
+        this.addRenderableWidget(new ValueCard(x, y, w - 56, title, value, null));
+        this.addRenderableWidget(new OrchardButton(
+                x + w - 38, y, 18, 20, "-",
+                b -> {
+                    adjust.accept(valueToDouble(value.get(), step) - step);
+                    AutoMaceConfig.save();
+                },
+                false));
+        this.addRenderableWidget(new OrchardButton(
+                x + w - 19, y, 19, 20, "+",
+                b -> {
+                    adjust.accept(valueToDouble(value.get(), step) + step);
+                    AutoMaceConfig.save();
+                },
+                false));
+    }
+
+    private double valueToDouble(String text, double fallback) {
+        int space = text.indexOf(' ');
+        String number = space > 0 ? text.substring(0, space) : text;
+        try {
+            return Double.parseDouble(number);
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
+    }
+
+    private void addDescription(int x, int y, int w, String text) {
+        this.addRenderableWidget(new ValueCard(x, y, w, text, () -> "", null));
+    }
+
+    // ------------------------------------------------------------ rebuild + close
+
+    private void rebuild() {
+        this.clearWidgets();
+        this.init();
+    }
+
+    @Override
+    public boolean keyPressed(KeyEvent event) {
+        // Close with the same key that opened the screen (Right Shift by default).
+        int openKey = GLFW.GLFW_KEY_RIGHT_SHIFT;
+        if (screenKeyDefault(event.key()) || event.key() == openKey) {
+            return handledClose();
+        }
+        return super.keyPressed(event);
+    }
+
+    private boolean screenKeyDefault(int keyCode) {
+        // Rebind-friendly: compare against the mapping's stored default key.
+        try {
+            if (AutoMaceMod.screenKey != null) {
+                return keyCode == AutoMaceMod.screenKey.getDefaultKey().getValue();
+            }
+        } catch (Throwable ignored) {
+        }
+        return keyCode == InputConstants.UNKNOWN.getValue();
+    }
+
+    private boolean handledClose() {
+        this.onClose();
+        return true;
+    }
+
+    @Override
+    public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
+        // NOTE: no renderBackground() call here — 1.21.9+ blurs automatically before render()
+        // and calling it again crashes with "Can only blur once per frame".
+
+        // Dark rounded panel (fake-but-convincing rounding with layered fills).
+        g.fill(panelX + 2, panelY, panelX + panelW - 2, panelY + panelH, COL_PANEL);
+        g.fill(panelX, panelY + 2, panelX + panelW, panelY + panelH - 2, COL_PANEL);
+        g.fill(panelX + 1, panelY + 1, panelX + panelW - 1, panelY + panelH - 1, COL_PANEL);
+
+        // Sidebar strip.
+        g.fill(panelX + 4, panelY + 4, panelX + sideW, panelY + panelH - 4, COL_SIDEBAR);
+
+        // Title + ON/OFF indicator.
+        g.drawString(Minecraft.getInstance().font, "Auto Mace", panelX + 12, panelY + 14, COL_TEXT);
+        boolean on = AutoMaceConfig.enabled;
+        g.drawString(Minecraft.getInstance().font, on ? "● ON" : "● OFF",
+                panelX + panelW - 52, panelY + 14, on ? COL_GREEN : COL_TEXT_DIM);
+        g.drawString(Minecraft.getInstance().font, on ? "ON" : "OFF",
+                panelX + panelW - 10, panelY + 14, on ? COL_GREEN : COL_TEXT_DIM);
+
+        super.render(g, mouseX, mouseY, partialTick);
+    }
+
+    // ------------------------------------------------------------ Orchard widgets
+
+    private static int clampInt(int value, int min, int max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
+    private static Font font() {
+        return Minecraft.getInstance().font;
+    }
+
+    /** Rounded dark button used for tabs, +/-, Add, Reset, Close and ignore-list rows. */
+    private class OrchardButton extends Button {
+
         private final String label;
-        private final int color;
+        private final boolean selected;
 
-        FlatButton(int x, int y, int w, int h, String label, int color, Runnable action) {
-            super(x, y, w, h, Component.literal(label), b -> action.run(), Button.DEFAULT_NARRATION);
+        OrchardButton(int x, int y, int w, int h, String label, Button.OnPress onPress, boolean selected) {
+            super(x, y, w, h, Component.literal(label), onPress, b -> b.getMessage());
             this.label = label;
-            this.color = color;
+            this.selected = selected;
         }
 
         @Override
-        protected void renderContents(GuiGraphics g, int mx, int my, float delta) {
-            Font font = Minecraft.getInstance().font;
-            rrect(g, getX(), getY(), width, height, isHovered() ? CARD_HOVER : CARD);
-            int tw = font.width(label);
-            g.drawString(font, label, getX() + (width - tw) / 2, getY() + (height - 8) / 2, color);
+        protected void renderContents(GuiGraphics g, int x, int y, float partialTick) {
+            int bg = isHovered() ? COL_CARD_HOVER : (selected ? COL_GREEN_DARK : COL_CARD);
+            g.fill(getX(), getY(), getX() + this.width, getY() + this.height, bg);
+            g.fill(getX(), getY() + this.height - 2, getX() + this.width, getY() + this.height,
+                    selected ? COL_GREEN : COL_SPLIT);
+            int textW = font().width(this.label);
+            int textX = getX() + (this.width - textW) / 2;
+            if (textX < getX() + 3) {
+                textX = getX() + 3;
+            }
+            int color = this.selected ? COL_GREEN : (isHovered() ? COL_TEXT : COL_TEXT_DIM);
+            g.drawString(font(), this.label, textX, getY() + (this.height - 8) / 2, color);
         }
     }
 
-    private static class SwitchRow extends Button {
-        private final String label, sub;
-        private final BooleanSupplier get;
+    /** A card row with title, subtitle, and a green toggle switch. Clicking anywhere toggles. */
+    private class SwitchCard extends Button {
 
-        SwitchRow(int x, int y, int w, String label, String sub, BooleanSupplier get, Consumer<Boolean> set) {
-            super(x, y, w, 28, Component.literal(label), b -> set.accept(!get.getAsBoolean()), Button.DEFAULT_NARRATION);
-            this.label = label;
-            this.sub = sub;
-            this.get = get;
+        private final String title;
+        private final String subtitle;
+        private final BooleanSupplier getter;
+        private final Consumer<Boolean> setter;
+
+        SwitchCard(int x, int y, int w, String title, String subtitle,
+                   BooleanSupplier getter, Consumer<Boolean> setter) {
+            super(x, y, w, 20, Component.literal(title), b -> { }, b -> b.getMessage());
+            this.title = title;
+            this.subtitle = subtitle;
+            this.getter = getter;
+            this.setter = setter;
         }
 
         @Override
-        protected void renderContents(GuiGraphics g, int mx, int my, float delta) {
-            Font font = Minecraft.getInstance().font;
-            rrect(g, getX(), getY(), width, height, isHovered() ? CARD_HOVER : CARD);
-            g.drawString(font, label, getX() + 10, getY() + 5, TEXT);
-            g.drawString(font, sub, getX() + 10, getY() + 16, SUB);
+        public void onPress() {
+            this.setter.accept(!this.getter.getAsBoolean());
+            AutoMaceConfig.save();
+        }
 
-            boolean on = get.getAsBoolean();
-            int sx = getX() + width - 38, sy = getY() + 8;
-            rrect(g, sx, sy, 28, 12, on ? ACCENT : OFF);
-            rrect(g, on ? sx + 18 : sx + 2, sy + 2, 8, 8, WHITE);
+        @Override
+        protected void renderContents(GuiGraphics g, int x, int y, float partialTick) {
+            boolean value = this.getter.getAsBoolean();
+            int bg = isHovered() ? COL_CARD_HOVER : COL_CARD;
+            g.fill(getX(), getY(), getX() + this.width, getY() + this.height, bg);
+            g.drawString(font(), this.title, getX() + 8, getY() + 3,
+                    value ? COL_TEXT : COL_TEXT_DIM);
+            if (!this.subtitle.isEmpty()) {
+                int subY = getY() + 12;
+                if (subY + 8 <= getY() + this.height) {
+                    g.drawString(font(), this.subtitle, getX() + 8, subY, COL_TEXT_DIM);
+                }
+            }
+            // Toggle switch (right side).
+            int trackW = 26;
+            int trackH = 12;
+            int trackX = getX() + this.width - trackW - 8;
+            int trackY = getY() + (this.height - trackH) / 2;
+            int trackColor = value ? COL_GREEN : COL_SPLIT;
+            g.fill(trackX, trackY, trackX + trackW, trackY + trackH, trackColor);
+            int knobW = 8;
+            int knobX = value ? trackX + trackW - knobW - 2 : trackX + 2;
+            int knobY = trackY + 2;
+            int knobH = trackH - 4;
+            g.fill(knobX, knobY, knobX + knobW, knobY + knobH, 0xFFF2F5F7);
+            // ON / OFF tag next to the switch.
+            String tag = value ? "ON" : "OFF";
+            int tagColor = value ? COL_GREEN : COL_TEXT_DIM;
+            int tagW = font().width(tag);
+            g.drawString(font(), tag, trackX - tagW - 6, trackY, tagColor);
         }
     }
 
-    private static class CycleRow extends Button {
-        private final String label, sub;
+    /** Read-only card showing a live value (used for numbers, descriptions, list headers). */
+    private class ValueCard extends Button {
+
+        private final String title;
         private final Supplier<String> value;
+        private final String nothing;
 
-        CycleRow(int x, int y, int w, String label, String sub, Supplier<String> value, Runnable step) {
-            super(x, y, w, 28, Component.literal(label), b -> step.run(), Button.DEFAULT_NARRATION);
-            this.label = label;
-            this.sub = sub;
+        ValueCard(int x, int y, int w, String title, Supplier<String> value, String nothing) {
+            super(x, y, w, 20, Component.literal(title), b -> { }, b -> b.getMessage());
+            this.title = title;
             this.value = value;
+            this.nothing = nothing;
         }
 
         @Override
-        protected void renderContents(GuiGraphics g, int mx, int my, float delta) {
-            Font font = Minecraft.getInstance().font;
-            rrect(g, getX(), getY(), width, height, isHovered() ? CARD_HOVER : CARD);
-            g.drawString(font, label, getX() + 10, getY() + 5, TEXT);
-            g.drawString(font, sub, getX() + 10, getY() + 16, SUB);
-
-            String v = "< " + value.get() + " >";
-            g.drawString(font, v, getX() + width - 10 - font.width(v), getY() + 10, ACCENT);
+        protected void renderContents(GuiGraphics g, int x, int y, float partialTick) {
+            g.fill(getX(), getY(), getX() + this.width, getY() + this.height, COL_CARD);
+            g.drawString(font(), this.title, getX() + 8, getY() + 3, COL_TEXT);
+            if (this.value != null) {
+                String text = this.value.get();
+                int textW = font().width(text);
+                g.drawString(font(), text, getX() + this.width - textW - 8, getY() + 3, COL_TEXT_DIM);
+            }
         }
     }
 }
