@@ -48,7 +48,12 @@ public class AutoMaceScreen extends Screen {
             this.addRenderableWidget(new TabButton(tx, ty, SIDE - 24, 22, t));
             ty += 26;
         }
-        this.addRenderableWidget(new FlatButton(left + 12, top + H - 34, SIDE - 24, 22, "Close", this::onClose));
+        this.addRenderableWidget(new FlatButton(left + 12, top + H - 60, SIDE - 24, 22, "Reset", SUB, () -> {
+            resetDefaults();
+            this.clearWidgets();
+            this.build();
+        }));
+        this.addRenderableWidget(new FlatButton(left + 12, top + H - 34, SIDE - 24, 22, "Close", 0xFFFF6B6B, this::onClose));
 
         int x = left + SIDE + 12, y = top + 46, w = W - SIDE - 24, step = 32;
         switch (tab) {
@@ -76,6 +81,18 @@ public class AutoMaceScreen extends Screen {
         }
     }
 
+    private static void resetDefaults() {
+        AutoMaceConfig.enabled = true;
+        AutoMaceConfig.smashOnly = true;
+        AutoMaceConfig.stunSlam = true;
+        AutoMaceConfig.minFall = 1.5;
+        AutoMaceConfig.targetPlayers = true;
+        AutoMaceConfig.targetHostile = true;
+        AutoMaceConfig.targetAnimals = true;
+        AutoMaceConfig.reactionTicks = 0;
+        AutoMaceConfig.hitSpacing = 6;
+    }
+
     private static double next(double[] values, double current) {
         for (int i = 0; i < values.length; i++) {
             if (Math.abs(values[i] - current) < 1e-6) return values[(i + 1) % values.length];
@@ -93,7 +110,6 @@ public class AutoMaceScreen extends Screen {
 
     @Override
     public void render(GuiGraphics g, int mouseX, int mouseY, float delta) {
-        this.renderBackground(g, mouseX, mouseY, delta);
         Font font = Minecraft.getInstance().font;
 
         rrect(g, left - 1, top - 1, W + 2, H + 2, BORDER);
@@ -101,6 +117,8 @@ public class AutoMaceScreen extends Screen {
         g.fill(left + 2, top + 2, left + SIDE, top + H - 2, SIDEBAR);
 
         g.drawString(font, "Auto Mace", left + 14, top + 16, ACCENT);
+        g.drawString(font, AutoMaceConfig.enabled ? "ON" : "OFF", left + SIDE - 26, top + 16,
+                AutoMaceConfig.enabled ? ACCENT : 0xFFFF6B6B);
         g.drawString(font, "singleplayer", left + 14, top + 28, SUB);
         g.drawString(font, "MODULES", left + 14, top + 50, SUB);
 
@@ -151,10 +169,12 @@ public class AutoMaceScreen extends Screen {
 
     private static class FlatButton extends Button {
         private final String label;
+        private final int color;
 
-        FlatButton(int x, int y, int w, int h, String label, Runnable action) {
+        FlatButton(int x, int y, int w, int h, String label, int color, Runnable action) {
             super(x, y, w, h, Component.literal(label), b -> action.run(), Button.DEFAULT_NARRATION);
             this.label = label;
+            this.color = color;
         }
 
         @Override
@@ -162,7 +182,7 @@ public class AutoMaceScreen extends Screen {
             Font font = Minecraft.getInstance().font;
             rrect(g, getX(), getY(), width, height, isHovered() ? CARD_HOVER : CARD);
             int tw = font.width(label);
-            g.drawString(font, label, getX() + (width - tw) / 2, getY() + (height - 8) / 2, 0xFFFF6B6B);
+            g.drawString(font, label, getX() + (width - tw) / 2, getY() + (height - 8) / 2, color);
         }
     }
 
