@@ -396,7 +396,7 @@ public class AutoMaceMod implements ClientModInitializer {
 
     // ------------------------------------------------------------ HUD
 
-    private static void renderHud(GuiGraphics graphics, Minecraft mc) {
+    private static void renderHUD(GuiGraphics graphics, Minecraft mc) {
         if (!AutoMaceConfig.hud) {
             return;
         }
