@@ -3,7 +3,7 @@
 	"id": "automace",
 	"version": "${version}",
 	"name": "Auto Mace",
-	"description": "Singleplayer auto mace: auto-switch, smash, stun slam, switch back. Right Shift opens the config GUI.",
+	"description": "Auto mace: auto-switch, smash, stun slam, switch back. Right Shift opens the config GUI.",
 	"authors": ["You"],
 	"license": "CC0-1.0",
 	"icon": "assets/automace/icon.png",
