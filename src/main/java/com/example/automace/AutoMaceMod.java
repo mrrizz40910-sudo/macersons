@@ -15,8 +15,8 @@ import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Entity;
@@ -38,9 +38,9 @@ public class AutoMaceMod implements ClientModInitializer {
     public static final String MOD_ID = "automace";
 
     private static final ResourceKey<Enchantment> BREACH =
-            ResourceKey.create(Registries.ENCHANTMENT, ResourceLocation.fromNamespaceAndPath("minecraft", "breach"));
+            ResourceKey.create(Registries.ENCHANTMENT, Identifier.fromNamespaceAndPath("minecraft", "breach"));
     private static final ResourceKey<Enchantment> DENSITY =
-            ResourceKey.create(Registries.ENCHANTMENT, ResourceLocation.fromNamespaceAndPath("minecraft", "density"));
+            ResourceKey.create(Registries.ENCHANTMENT, Identifier.fromNamespaceAndPath("minecraft", "density"));
 
     public static KeyMapping screenKey;
     public static KeyMapping toggleKey;
@@ -70,21 +70,21 @@ public class AutoMaceMod implements ClientModInitializer {
                 "Auto Mace: Open Settings",
                 InputConstants.Type.KEYSYM,
                 GLFW.GLFW_KEY_RIGHT_SHIFT,
-                "key.categories.misc"));
+                KeyMapping.Category.MISC));
         toggleKey = KeyBindingHelper.registerKeyBinding(new KeyMapping(
                 "Auto Mace: Toggle On/Off",
                 InputConstants.Type.KEYSYM,
                 GLFW.GLFW_KEY_UNKNOWN,
-                "key.categories.misc"));
+                KeyMapping.Category.MISC));
         windBoostKey = KeyBindingHelper.registerKeyBinding(new KeyMapping(
                 "Auto Mace: Wind Charge Boost",
                 InputConstants.Type.KEYSYM,
                 GLFW.GLFW_KEY_UNKNOWN,
-                "key.categories.misc"));
+                KeyMapping.Category.MISC));
 
         HudElementRegistry.attachElementBefore(
                 VanillaHudElements.CHAT,
-                ResourceLocation.fromNamespaceAndPath(MOD_ID, "hud"),
+                Identifier.fromNamespaceAndPath(MOD_ID, "hud"),
                 (graphics, tickCounter) -> renderHUD(graphics, Minecraft.getInstance()));
 
         ClientTickEvents.END_CLIENT_TICK.register(AutoMaceMod::tick);
@@ -248,7 +248,7 @@ public class AutoMaceMod implements ClientModInitializer {
         if (target instanceof Player candidate) {
             if (candidate.isCreative()) return false;
             if (!AutoMaceConfig.targetPlayers) return false;
-            return !isIgnored(candidate.getGameProfile().getName());
+            return !isIgnored(candidate.getName().getString());
         }
         if (AutoMaceConfig.targetHostiles && target instanceof Enemy) return true;
         if (AutoMaceConfig.targetAnimals && target instanceof Animal) {
