@@ -9,7 +9,7 @@ import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.multiplayer.MultiPlayerGameMode;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -166,7 +166,7 @@ public class AutoMaceMod implements ClientModInitializer {
         boolean inRange = true;
         if (!isSpearHeld(player)) {
             double range = player.getAttributeValue(Attributes.ENTITY_INTERACTION_RANGE);
-            inRange = player.getEyePosition().distanceToSqr(target.getBoundingBox()) <= range * range;
+            inRange = target.getBoundingBox().distanceToSqr(player.getEyePosition()) <= range * range;
         }
         boolean valid = inRange && isValidTarget(player, target);
         if (!valid) {
