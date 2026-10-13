@@ -2,6 +2,7 @@ package com.example.automace;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
@@ -115,15 +116,16 @@ public class AutoMaceScreen extends Screen {
             }
             case 2 -> { // Timing
                 addNumberBar(contentX, rowY + 0 * rowH, rowW, "Min fall height",
-                        () -> String.format("%.1f blocks", AutoMaceConfig.minFall),
-                        v -> AutoMaceConfig.minFall = v, 0.5, 20.0, 0.5);
+                        () -> String.format(Locale.ROOT, "%.1f blocks", AutoMaceConfig.minFall),
+                        v -> AutoMaceConfig.minFall = AutoMaceConfig.clampDouble(v, 0.5, 20.0),
+                        0.5, 20.0, 0.5);
                 addNumberBar(contentX, rowY + 1 * rowH, rowW, "Reaction delay",
                         () -> AutoMaceConfig.reactionDelay + " ticks",
-                        v -> AutoMaceConfig.reactionDelay = (int) AutoMaceConfig.clampDouble(v, 0, 20),
+                        v -> AutoMaceConfig.reactionDelay = (int) AutoMaceConfig.clampDouble(v, 0.0, 20.0),
                         0.0, 20.0, 1.0);
                 addNumberBar(contentX, rowY + 2 * rowH, rowW, "Hit spacing",
                         () -> AutoMaceConfig.hitSpacing + " ticks",
-                        v -> AutoMaceConfig.hitSpacing = (int) AutoMaceConfig.clampDouble(v, 1, 40),
+                        v -> AutoMaceConfig.hitSpacing = (int) AutoMaceConfig.clampDouble(v, 1.0, 40.0),
                         1.0, 40.0, 1.0);
                 addDescription(contentX, rowY + 3 * rowH, rowW,
                         "Lower reaction delay = faster reaction");
@@ -145,13 +147,13 @@ public class AutoMaceScreen extends Screen {
 
     private void buildIgnoreList(int startY) {
         int boxY = startY;
-        this.ignoreBox = new EditBox(Minecraft.getInstance().font, contentX, boxY, rowW - 64, 18,
+        this.ignoreBox = new EditBox(Minecraft.getInstance().font, contentX, boxY, rowW - 68, 18,
                 Component.literal("Name"));
         this.ignoreBox.setMaxLength(32);
         this.ignoreBox.setValue(lastIgnoreText);
         this.addRenderableWidget(this.ignoreBox);
         this.addRenderableWidget(new OrchardButton(
-                contentX + rowW - 60, boxY, 60, 18, "Add",
+                contentX + rowW - 64, boxY, 64, 18, "Add",
                 b -> addIgnore(),
                 false));
 
@@ -209,38 +211,37 @@ public class AutoMaceScreen extends Screen {
     private void addNumberBar(int x, int y, int w, String title,
                               Supplier<String> value, Consumer<Double> adjust,
                               double min, double max, double step) {
-        this.addRenderableWidget(new ValueCard(x, y, w - 56, title, value, null));
+        this.addRenderableWidget(new ValueCard(x, y, w - 42, title, value));
         this.addRenderableWidget(new OrchardButton(
-                x + w - 38, y, 18, 20, "-",
+                x + w - 38, y + 1, 18, 18, "-",
                 b -> {
-                    adjust.accept(valueToDouble(value.get(), step) - step);
-                    AutoMaceConfig.save();
+                    adjust.accept(numberFrom(value) - step);
                 },
                 false));
         this.addRenderableWidget(new OrchardButton(
-                x + w - 19, y, 19, 20, "+",
+                x + w - 19, y + 1, 19, 18, "+",
                 b -> {
-                    adjust.accept(valueToDouble(value.get(), step) + step);
-                    AutoMaceConfig.save();
+                    adjust.accept(numberFrom(value) + step);
                 },
                 false));
     }
 
-    private double valueToDouble(String text, double fallback) {
+    private double numberFrom(Supplier<String> value) {
+        String text = value.get();
         int space = text.indexOf(' ');
         String number = space > 0 ? text.substring(0, space) : text;
         try {
             return Double.parseDouble(number);
         } catch (NumberFormatException e) {
-            return fallback;
+            return 0.0;
         }
     }
 
     private void addDescription(int x, int y, int w, String text) {
-        this.addRenderableWidget(new ValueCard(x, y, w, text, () -> "", null));
+        this.addRenderableWidget(new ValueCard(x, y, w, text, null));
     }
 
-    // ------------------------------------------------------------ rebuild + close
+    // ------------------------------------------------------------ rebuild + close + render
 
     private void rebuild() {
         this.clearWidgets();
@@ -249,36 +250,27 @@ public class AutoMaceScreen extends Screen {
 
     @Override
     public boolean keyPressed(KeyEvent event) {
-        // Close with the same key that opened the screen (Right Shift by default).
-        int openKey = GLFW.GLFW_KEY_RIGHT_SHIFT;
-        if (screenKeyDefault(event.key()) || event.key() == openKey) {
-            return handledClose();
+        // Close with the same key that opened the screen (Right Shift by default),
+        // including when the user rebinds it later.
+        try {
+            if (AutoMaceMod.screenKey != null
+                    && event.key() == AutoMaceMod.screenKey.getDefaultKey().getValue()) {
+                this.onClose();
+                return true;
+            }
+        } catch (Throwable ignored) {
+            // Fall back to ESC below if the accessor differs.
         }
         return super.keyPressed(event);
     }
 
-    private boolean screenKeyDefault(int keyCode) {
-        // Rebind-friendly: compare against the mapping's stored default key.
-        try {
-            if (AutoMaceMod.screenKey != null) {
-                return keyCode == AutoMaceMod.screenKey.getDefaultKey().getValue();
-            }
-        } catch (Throwable ignored) {
-        }
-        return keyCode == InputConstants.UNKNOWN.getValue();
-    }
-
-    private boolean handledClose() {
-        this.onClose();
-        return true;
-    }
-
     @Override
     public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-        // NOTE: no renderBackground() call here — 1.21.9+ blurs automatically before render()
-        // and calling it again crashes with "Can only blur once per frame".
+        // NOTE: no renderBackground() call here. Since 1.21.9 the screen background
+        // (blur) is rendered automatically before Screen.render(), and calling it
+        // again crashes with "Can only blur once per frame".
 
-        // Dark rounded panel (fake-but-convincing rounding with layered fills).
+        // Dark rounded panel (layered fills fake the rounded corners).
         g.fill(panelX + 2, panelY, panelX + panelW - 2, panelY + panelH, COL_PANEL);
         g.fill(panelX, panelY + 2, panelX + panelW, panelY + panelH - 2, COL_PANEL);
         g.fill(panelX + 1, panelY + 1, panelX + panelW - 1, panelY + panelH - 1, COL_PANEL);
@@ -287,25 +279,18 @@ public class AutoMaceScreen extends Screen {
         g.fill(panelX + 4, panelY + 4, panelX + sideW, panelY + panelH - 4, COL_SIDEBAR);
 
         // Title + ON/OFF indicator.
-        g.drawString(Minecraft.getInstance().font, "Auto Mace", panelX + 12, panelY + 14, COL_TEXT);
+        Font font = Minecraft.getInstance().font;
+        g.drawString(font, "Auto Mace", panelX + 12, panelY + 14, COL_TEXT);
         boolean on = AutoMaceConfig.enabled;
-        g.drawString(Minecraft.getInstance().font, on ? "● ON" : "● OFF",
-                panelX + panelW - 52, panelY + 14, on ? COL_GREEN : COL_TEXT_DIM);
-        g.drawString(Minecraft.getInstance().font, on ? "ON" : "OFF",
-                panelX + panelW - 10, panelY + 14, on ? COL_GREEN : COL_TEXT_DIM);
+        String state = on ? "ON" : "OFF";
+        int stateColor = on ? COL_GREEN : COL_TEXT_DIM;
+        int stateW = font.width(state);
+        g.drawString(font, state, panelX + panelW - stateW - 10, panelY + 14, stateColor);
 
         super.render(g, mouseX, mouseY, partialTick);
     }
 
     // ------------------------------------------------------------ Orchard widgets
-
-    private static int clampInt(int value, int min, int max) {
-        return Math.max(min, Math.min(max, value));
-    }
-
-    private static Font font() {
-        return Minecraft.getInstance().font;
-    }
 
     /** Rounded dark button used for tabs, +/-, Add, Reset, Close and ignore-list rows. */
     private class OrchardButton extends Button {
@@ -320,18 +305,18 @@ public class AutoMaceScreen extends Screen {
         }
 
         @Override
-        protected void renderContents(GuiGraphics g, int x, int y, float partialTick) {
+        protected void renderContents(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
             int bg = isHovered() ? COL_CARD_HOVER : (selected ? COL_GREEN_DARK : COL_CARD);
             g.fill(getX(), getY(), getX() + this.width, getY() + this.height, bg);
             g.fill(getX(), getY() + this.height - 2, getX() + this.width, getY() + this.height,
                     selected ? COL_GREEN : COL_SPLIT);
-            int textW = font().width(this.label);
+            int textW = Minecraft.getInstance().font.width(this.label);
             int textX = getX() + (this.width - textW) / 2;
             if (textX < getX() + 3) {
                 textX = getX() + 3;
             }
             int color = this.selected ? COL_GREEN : (isHovered() ? COL_TEXT : COL_TEXT_DIM);
-            g.drawString(font(), this.label, textX, getY() + (this.height - 8) / 2, color);
+            g.drawString(Minecraft.getInstance().font, this.label, textX, getY() + (this.height - 8) / 2, color);
         }
     }
 
@@ -359,60 +344,59 @@ public class AutoMaceScreen extends Screen {
         }
 
         @Override
-        protected void renderContents(GuiGraphics g, int x, int y, float partialTick) {
+        protected void renderContents(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
             boolean value = this.getter.getAsBoolean();
             int bg = isHovered() ? COL_CARD_HOVER : COL_CARD;
             g.fill(getX(), getY(), getX() + this.width, getY() + this.height, bg);
-            g.drawString(font(), this.title, getX() + 8, getY() + 3,
+            g.drawString(Minecraft.getInstance().font, this.title, getX() + 8, getY() + 3,
                     value ? COL_TEXT : COL_TEXT_DIM);
             if (!this.subtitle.isEmpty()) {
                 int subY = getY() + 12;
                 if (subY + 8 <= getY() + this.height) {
-                    g.drawString(font(), this.subtitle, getX() + 8, subY, COL_TEXT_DIM);
+                    g.drawString(Minecraft.getInstance().font, this.subtitle, getX() + 8, subY, COL_TEXT_DIM);
                 }
             }
-            // Toggle switch (right side).
+            // Toggle switch (right side): track + sliding knob.
             int trackW = 26;
             int trackH = 12;
             int trackX = getX() + this.width - trackW - 8;
             int trackY = getY() + (this.height - trackH) / 2;
-            int trackColor = value ? COL_GREEN : COL_SPLIT;
-            g.fill(trackX, trackY, trackX + trackW, trackY + trackH, trackColor);
+            g.fill(trackX, trackY, trackX + trackW, trackY + trackH,
+                    value ? COL_GREEN : COL_SPLIT);
             int knobW = 8;
+            int knobH = trackH - 4;
             int knobX = value ? trackX + trackW - knobW - 2 : trackX + 2;
             int knobY = trackY + 2;
-            int knobH = trackH - 4;
             g.fill(knobX, knobY, knobX + knobW, knobY + knobH, 0xFFF2F5F7);
-            // ON / OFF tag next to the switch.
             String tag = value ? "ON" : "OFF";
             int tagColor = value ? COL_GREEN : COL_TEXT_DIM;
-            int tagW = font().width(tag);
-            g.drawString(font(), tag, trackX - tagW - 6, trackY, tagColor);
+            int tagW = Minecraft.getInstance().font.width(tag);
+            g.drawString(Minecraft.getInstance().font, tag, trackX - tagW - 6, trackY, tagColor);
         }
     }
 
-    /** Read-only card showing a live value (used for numbers, descriptions, list headers). */
+    /** Read-only card showing a live value (numbers, descriptions). */
     private class ValueCard extends Button {
 
         private final String title;
         private final Supplier<String> value;
-        private final String nothing;
 
-        ValueCard(int x, int y, int w, String title, Supplier<String> value, String nothing) {
+        ValueCard(int x, int y, int w, String title, Supplier<String> value) {
             super(x, y, w, 20, Component.literal(title), b -> { }, b -> b.getMessage());
             this.title = title;
             this.value = value;
-            this.nothing = nothing;
         }
 
         @Override
-        protected void renderContents(GuiGraphics g, int x, int y, float partialTick) {
-            g.fill(getX(), getY(), getX() + this.width, getY() + this.height, COL_CARD);
-            g.drawString(font(), this.title, getX() + 8, getY() + 3, COL_TEXT);
+        protected void renderContents(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
+            int bg = isHovered() ? COL_CARD_HOVER : COL_CARD;
+            g.fill(getX(), getY(), getX() + this.width, getY() + this.height, bg);
+            g.drawString(Minecraft.getInstance().font, this.title, getX() + 8, getY() + 3, COL_TEXT);
             if (this.value != null) {
                 String text = this.value.get();
-                int textW = font().width(text);
-                g.drawString(font(), text, getX() + this.width - textW - 8, getY() + 3, COL_TEXT_DIM);
+                int textW = Minecraft.getInstance().font.width(text);
+                g.drawString(Minecraft.getInstance().font, text,
+                        getX() + this.width - textW - 8, getY() + 3, COL_TEXT_DIM);
             }
         }
     }
